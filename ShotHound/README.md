@@ -22,7 +22,7 @@ pip install cornershot neo4j
 ```
 
 ## Basic Usage
-Basic command line arguments for ShotHoundL 
+Basic command line arguments for ShotHound 
 ```bash
 ShotHound [-h] [--dbuser DBUSER] [--dbpass DBPASS] [--dburl DBURL] [-s SOURCE] [-t TARGET] [-v] [-w THREADS] domain_user domain_password domain
 ```
@@ -57,7 +57,7 @@ ShotHound goes through the following steps:
 1. Query neo4j for all **logical paths** discovered by BloodHound
 2. Test network access between source and destination hosts along a **logical path** using [CornerShot](https://github.com/zeronetworks/cornershot)
 3. An attcker is able to move between two hosts if at least one port is *"open"* between them (by default, CornerShot uses ports that allow for lateral movement) 
-4. A path is considered **practical** if network access allows and attacker to propagate along the path
+4. A path is considered **practical** if network access enables an attacker to propagate along the path
 5. Only **practical** paths are returned by ShotHound  
 
 # Future Work

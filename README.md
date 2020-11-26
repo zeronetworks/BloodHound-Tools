@@ -11,3 +11,12 @@ This repository contains tools that integrate with Bloodhound’s database in or
 ## ShotHound
 Validate practical paths discovered by BloodHound with [CornerShot](https://github.com/zeronetworks/cornershot).  
 
+## Ransomulator
+Simulate ransomware-like infection in your dataset.
+
+## DBCreator
+Simulate BloodHound dataset, along with "Open" network access edges.
+
+## CustomQueries
+A list of common queries that reflect the network dimension, if it is integrated into the dataset.
+

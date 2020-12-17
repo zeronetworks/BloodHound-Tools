@@ -6,6 +6,8 @@ A typical environment can yield millions of paths, representing almost endless o
 
 However, a critical dimension that Bloodhound ignores, namely network access, could hold the key to shutting down excessive lateral movement.
 This repository contains tools that integrate with Bloodhound’s database in order to reflect network access, for the benefit of both red and blue teams. 
+
+Read more [here](https://zeronetworks.com/blog/adversary-resilience-via-least-privilege-networking-part-1/).
  
 # Tools List
 ## ShotHound

@@ -2,6 +2,8 @@
 ShotHound is a standalone script that integrates with BloodHound's Neo4j database and [CornerShot](https://github.com/zeronetworks/cornershot).
 It allows security teams to validate **logical paths** discovered by BloodHound against **physical network access**.
 
+![ShotHound demo](./demos/shothound.gif)  
+
 # Use Cases
 ## Blue Teams
 Because a typical environment can yield millions of logical paths by BloodHound, it is crucial for blue teams to focus their mitigation efforts on **practical paths**, which may pose a fraction of all logical paths in a Least Privilege Network.

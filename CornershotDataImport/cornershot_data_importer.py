@@ -7,8 +7,8 @@ from cornershot import logger
 
 
 def parse_args():
-    parser = ArgumentParser(prog='BloodHound Data Loader', formatter_class=ArgumentDefaultsHelpFormatter,
-                            description='Load Cornershot data into BloodHound')
+    parser = ArgumentParser(prog='CornerShot Data Importer', formatter_class=ArgumentDefaultsHelpFormatter,
+                            description='Load CornerShot data into BloodHound')
     parser.add_argument('--dbuser', dest='dbuser', default='neo4j', help='neo4j user name', type=str)
     parser.add_argument('--dbpass', dest='dbpass', default='neo4j', help='neo4j db password', type=str)
     parser.add_argument('--dburl', dest='dburl', default='bolt://localhost:7687', help='neo4j db url')

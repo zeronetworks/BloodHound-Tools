@@ -3,11 +3,17 @@ from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor,as_completed,thread
 import sys
 import csv
+from time import time
 
 PRACTICAL = 'practical'
 LOGICAL = 'logical'
 NETONLY = 'netonly'
 rans = None
+
+def time_to_str(total_time):
+    hours, rem = divmod(total_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
 
 class ransomulator(object):
     def __init__(self,user,password,url,maxwaves,edges,simulate,workers=25):
@@ -41,7 +47,18 @@ class ransomulator(object):
 
     def get_all_computers(self):
         print("Collecting all computer nodes from database...")
-        result = self.session.run("MATCH (c:Computer) RETURN DISTINCT c.name AS computer_name")
+        result = self.session.run("MATCH (c:Computer) RETURN DISTINCT id(c) AS computer_id, c.name AS computer_name")
+        computers = []
+        for record in result:
+            computers.append(record["computer_name"])
+
+        return computers
+
+    def get_computers_with_privileged_users(self):
+        print("Collecting computer nodes who have privileged user session from database...")
+        #result = self.session.run("MATCH shortestPath((privUser:User)-[:MemberOf|AdminTo*0..]->(m:Computer)) WITH privUser MATCH (srcHost:Computer)-[:HasSession]->(privUser) RETURN DISTINCT srcHost.name AS computer_name")
+        result = self.session.run("MATCH(g:Group)-[:AdminTo]->(c:Computer) WITH DISTINCT g MATCH ShortestPath((u:User)-[:MemberOf*0..]->(g)) WITH DISTINCT u as privU MATCH(c: Computer)-[: HasSession]->(privU) RETURN DISTINCT c.name AS computer_name")
+
         computers = []
         for record in result:
             computers.append(record["computer_name"])
@@ -50,8 +67,9 @@ class ransomulator(object):
 
     def generate_wave_query_string(self):
         if LOGICAL in self.simulate:
-            # return 'MATCH (src)-[:HasSession]->(u:User) WHERE src.name IN $last_wave WITH src,u MATCH shortestPath((u)-[:MemberOf|AdminTo*1..]->(dest:Computer)) WHERE NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
             return 'MATCH shortestPath((src:Computer)-[: HasSession | MemberOf | AdminTo * 1..]->(dest:Computer)) WHERE src <> dest AND src.name IN $last_wave AND NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
+            #return 'MATCH shortestPath((src:Computer)-[: HasSession | MemberOf | AdminTo * 1..]->(dest:Computer)) WHERE src <> dest AND id(src) IN $last_wave AND NOT id(dest) IN $last_wave RETURN COLLECT(DISTINCT(id(dest))) AS next_wave'
+
         elif NETONLY in self.simulate:
             return 'MATCH (src:Computer)-[:Open]->(dest:Computer) WHERE src.name IN $last_wave AND NOT dest.name IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
         elif PRACTICAL in self.simulate:
@@ -93,11 +111,10 @@ class ransomulator(object):
                 print("Can't simulate without a valid DB connection!")
             else:
                 self.session = self.driver.session()
-                computers = self.get_all_computers()
-                print("Running simulation for each computer...")
+                computers = self.get_computers_with_privileged_users()
+                #computers = self.get_all_computers()
+                print("Running simulation...")
                 future_to_totals_waves_pairs = {self.executor.submit(self.simulate_wave_for_computer,computer): computer for computer in computers}
-                # for computer in computers:
-                #     total,waves = self.simulate_wave_for_computer(computer)
                 for future in as_completed(future_to_totals_waves_pairs):
                     computer = future_to_totals_waves_pairs[future]
                     try:
@@ -143,7 +160,6 @@ class ransomulator(object):
 
     def stop(self):
         print("Stopping execution...")
-        # self.executor.shutdown(wait=False,cancel_futures=True)
         self.executor._threads.clear()
         thread._threads_queues.clear()
         print("Execution stopped...")
@@ -161,6 +177,9 @@ def output_csv(file_path,wv_dict,max_wave_len):
 
 def simulate(user,password,url,maxwaves,edges,simulate,workers):
     global rans
+
+    start_time = time()
+
     rans = ransomulator(user, password, url, maxwaves, edges, simulate,workers)
     if rans.connect():
         sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps = rans.somulate()
@@ -169,12 +188,14 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers):
     else:
         print("Error during connection...")
 
-    print("Ransomulator done.      ")
+    elapsed = time_to_str(time() - start_time)
+    print("Ransomulator done: {}".format(elapsed))
     print("-----------------------------")
     print("Total computers with paths:\t{}".format(total_comps))
     print("Max compromised :\t{}".format(max_total))
     print("Avg wave length:\t{}".format(round(avg_wavelen, 1)))
     print("Max wave length:\t{}".format(max_wavelen))
+
 
 def create_query(computer,user, password, url, maxwaves, edges, simulate):
     if LOGICAL in simulate:

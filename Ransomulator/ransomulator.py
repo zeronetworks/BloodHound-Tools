@@ -3,11 +3,17 @@ from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor,as_completed,thread
 import sys
 import csv
+from time import time
 
 PRACTICAL = 'practical'
 LOGICAL = 'logical'
 NETONLY = 'netonly'
 rans = None
+
+def time_to_str(total_time):
+    hours, rem = divmod(total_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
 
 class ransomulator(object):
     def __init__(self,user,password,url,maxwaves,edges,simulate,workers=25):
@@ -161,6 +167,9 @@ def output_csv(file_path,wv_dict,max_wave_len):
 
 def simulate(user,password,url,maxwaves,edges,simulate,workers):
     global rans
+
+    start_time = time()
+
     rans = ransomulator(user, password, url, maxwaves, edges, simulate,workers)
     if rans.connect():
         sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps = rans.somulate()
@@ -169,7 +178,9 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers):
     else:
         print("Error during connection...")
 
-    print("Ransomulator done.      ")
+    elapsed = time_to_str(time() - start_time)
+    
+    print("Ransomulator done: {}".format(elapsed))
     print("-----------------------------")
     print("Total computers with paths:\t{}".format(total_comps))
     print("Max compromised :\t{}".format(max_total))

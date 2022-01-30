@@ -8,6 +8,8 @@ from time import time
 PRACTICAL = 'practical'
 LOGICAL = 'logical'
 NETONLY = 'netonly'
+ALL = 'all'
+PRIVS = 'privileged'
 rans = None
 
 def time_to_str(total_time):
@@ -16,7 +18,7 @@ def time_to_str(total_time):
     return "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
 
 class ransomulator(object):
-    def __init__(self,user,password,url,maxwaves,edges,simulate,workers=25):
+    def __init__(self,user,password,url,maxwaves,edges,simulate,start_hosts,workers=25):
         self.url = url
         self.username = user
         self.password = password
@@ -29,6 +31,7 @@ class ransomulator(object):
         self.simulate = simulate
         self.workers = workers
         self.executor = ThreadPoolExecutor(max_workers=workers)
+        self.start_hosts = start_hosts
 
     def connect(self):
         self.connected = False
@@ -45,9 +48,14 @@ class ransomulator(object):
 
         return self.connected
 
-    def get_all_computers(self):
-        print("Collecting all computer nodes from database...")
-        result = self.session.run("MATCH (c:Computer) RETURN DISTINCT c.name AS computer_name")
+    def get_start_computers(self):
+        if(self.start_hosts == ALL):
+            print("Collecting all computer nodes from database...")
+            result = self.session.run("MATCH (c:Computer) RETURN DISTINCT id(c) AS computer_id, c.name AS computer_name")
+        else:
+            print("Collecting computer nodes who have privileged user session from database...")
+            result = self.session.run("MATCH(g:Group)-[:AdminTo]->(c:Computer) WITH DISTINCT g MATCH ShortestPath((u:User)-[:MemberOf*0..]->(g)) WITH DISTINCT u as privU MATCH(c: Computer)-[: HasSession]->(privU) RETURN DISTINCT c.name AS computer_name")
+
         computers = []
         for record in result:
             computers.append(record["computer_name"])
@@ -56,7 +64,6 @@ class ransomulator(object):
 
     def generate_wave_query_string(self):
         if LOGICAL in self.simulate:
-            # return 'MATCH (src)-[:HasSession]->(u:User) WHERE src.name IN $last_wave WITH src,u MATCH shortestPath((u)-[:MemberOf|AdminTo*1..]->(dest:Computer)) WHERE NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
             return 'MATCH shortestPath((src:Computer)-[: HasSession | MemberOf | AdminTo * 1..]->(dest:Computer)) WHERE src <> dest AND src.name IN $last_wave AND NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
         elif NETONLY in self.simulate:
             return 'MATCH (src:Computer)-[:Open]->(dest:Computer) WHERE src.name IN $last_wave AND NOT dest.name IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
@@ -99,11 +106,9 @@ class ransomulator(object):
                 print("Can't simulate without a valid DB connection!")
             else:
                 self.session = self.driver.session()
-                computers = self.get_all_computers()
-                print("Running simulation for each computer...")
+                computers = self.get_start_computers()
+                print("Running simulation...")
                 future_to_totals_waves_pairs = {self.executor.submit(self.simulate_wave_for_computer,computer): computer for computer in computers}
-                # for computer in computers:
-                #     total,waves = self.simulate_wave_for_computer(computer)
                 for future in as_completed(future_to_totals_waves_pairs):
                     computer = future_to_totals_waves_pairs[future]
                     try:
@@ -149,7 +154,6 @@ class ransomulator(object):
 
     def stop(self):
         print("Stopping execution...")
-        # self.executor.shutdown(wait=False,cancel_futures=True)
         self.executor._threads.clear()
         thread._threads_queues.clear()
         print("Execution stopped...")
@@ -165,12 +169,13 @@ def output_csv(file_path,wv_dict,max_wave_len):
             row = [k,wv_dict[k]["total"]] + wv_dict[k]["waves"]
             writer.writerow(row)
 
-def simulate(user,password,url,maxwaves,edges,simulate,workers):
+def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
     global rans
 
     start_time = time()
 
-    rans = ransomulator(user, password, url, maxwaves, edges, simulate,workers)
+    rans = ransomulator(user, password, url, maxwaves, edges, simulate,start_hosts,workers)
+
     if rans.connect():
         sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps = rans.somulate()
         if outfile:
@@ -179,13 +184,14 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers):
         print("Error during connection...")
 
     elapsed = time_to_str(time() - start_time)
-    
+
     print("Ransomulator done: {}".format(elapsed))
     print("-----------------------------")
     print("Total computers with paths:\t{}".format(total_comps))
     print("Max compromised :\t{}".format(max_total))
     print("Avg wave length:\t{}".format(round(avg_wavelen, 1)))
     print("Max wave length:\t{}".format(max_wavelen))
+
 
 def create_query(computer,user, password, url, maxwaves, edges, simulate):
     if LOGICAL in simulate:
@@ -201,7 +207,8 @@ def create_query(computer,user, password, url, maxwaves, edges, simulate):
 def parse_args():
     parser = ArgumentParser(prog=ArgumentParser().prog,prefix_chars="-/",add_help=False,description="Simulate ransomware infection through Bloodhound's database")
     parser.add_argument('-h', '--help', '/?', '/h', '/help', action='help', help='show this help message and exit')
-    parser.add_argument('-s', '--simulate', metavar='', dest='simulate', choices=[PRACTICAL, LOGICAL, NETONLY],default=PRACTICAL,help='type of lateral movement to simulate. choices: [%(choices)s], (default: practical).')
+    parser.add_argument('-s', '--simulate', metavar='', dest='simulate', choices=[PRACTICAL, LOGICAL, NETONLY],default=LOGICAL,help='type of lateral movement to simulate. choices: [%(choices)s], (default: logical).')
+    parser.add_argument('-c', '--computers', metavar='', dest='computers', choices=[ALL,PRIVS], default=ALL, help='which computer edges should be considered as the starting point. choices: [%(choices)s], (default: all)')
     parser.add_argument("-u", "--user", dest='user', metavar='', help="Neo4j DB user name", type=str, default="neo4j")
     parser.add_argument("-p", "--pass", dest='password', metavar='', help="Neo4j DB password", type=str,default="neo4j")
     parser.add_argument("-l", "--url", dest="url", metavar="", help="Neo4j URL", default="bolt://localhost:7687",type=str)
@@ -235,12 +242,13 @@ if __name__ == '__main__':
         edges = args.edges
         outfile = args.out_file
         workers = args.workers
+        start_hosts = args.computers
 
         if command and "query" in command:
             computer = args.computer
             print(create_query(computer,user, password, url, maxwaves, edges, sim))
         else:
-            simulate(user, password, url, maxwaves, edges, sim,workers)
+            simulate(user, password, url, maxwaves, edges, sim,workers,start_hosts)
 
 
     except KeyboardInterrupt:

@@ -175,6 +175,7 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
     start_time = time()
 
     rans = ransomulator(user, password, url, maxwaves, edges, simulate,start_hosts,workers)
+
     if rans.connect():
         sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps = rans.somulate()
         if outfile:
@@ -183,6 +184,7 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
         print("Error during connection...")
 
     elapsed = time_to_str(time() - start_time)
+
     print("Ransomulator done: {}".format(elapsed))
     print("-----------------------------")
     print("Total computers with paths:\t{}".format(total_comps))

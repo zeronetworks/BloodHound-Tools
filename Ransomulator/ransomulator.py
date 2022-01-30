@@ -62,6 +62,11 @@ class ransomulator(object):
 
         return computers
 
+    def count_computers(self):
+        result = self.session.run("MATCH (c:Computer) RETURN count(DISTINCT id(c)) as num_computers")
+        for record in result:
+            return record['num_computers']
+
     def generate_wave_query_string(self):
         if LOGICAL in self.simulate:
             return 'MATCH shortestPath((src:Computer)-[: HasSession | MemberOf | AdminTo * 1..]->(dest:Computer)) WHERE src <> dest AND src.name IN $last_wave AND NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
@@ -101,6 +106,8 @@ class ransomulator(object):
         avg_wavelen = 0
         max_total = 0
         total_comps= 0
+        computers_in_environment = 0
+        score = 0
         try:
             if not self.connected:
                 print("Can't simulate without a valid DB connection!")
@@ -108,6 +115,7 @@ class ransomulator(object):
                 self.session = self.driver.session()
                 computers = self.get_start_computers()
                 print("Running simulation...")
+                computers_in_environment = self.count_computers()
                 future_to_totals_waves_pairs = {self.executor.submit(self.simulate_wave_for_computer,computer): computer for computer in computers}
                 for future in as_completed(future_to_totals_waves_pairs):
                     computer = future_to_totals_waves_pairs[future]
@@ -115,6 +123,7 @@ class ransomulator(object):
                         total_waves_pair = future.result()
                         total = total_waves_pair[0]
                         waves = total_waves_pair[1]
+                        score += total
                         if total > 0:
                             total_comps += 1
                             if len(waves) > max_wavelen:
@@ -133,9 +142,12 @@ class ransomulator(object):
 
                 if total_comps > 0:
                     avg_wavelen = avg_wavelen / total_comps
-                else: avg_wavelen = 0
+                    score = round((score / (computers_in_environment**2))*100)
+                else:
+                    avg_wavelen = 0
+
                 sorted_waves = {k: v for k,v in sorted(waves_dict.items(),key=lambda item: item[1]["total"],reverse=True)}
-                return sorted_waves,max_wavelen,avg_wavelen,max_total,total_comps
+                return sorted_waves,max_wavelen,avg_wavelen,max_total,total_comps,computers_in_environment,score
 
         except Exception as err:
             print("Error during simulation: {}".format(err))
@@ -177,7 +189,7 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
     rans = ransomulator(user, password, url, maxwaves, edges, simulate,start_hosts,workers)
 
     if rans.connect():
-        sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps = rans.somulate()
+        sorted_waves, max_wavelen, avg_wavelen, max_total, total_comps, num_of_computers, score = rans.somulate()
         if outfile:
             output_csv(outfile, sorted_waves, max_wavelen)
     else:
@@ -187,6 +199,8 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
 
     print("Ransomulator done: {}".format(elapsed))
     print("-----------------------------")
+    print("Fragility score:\t{}%".format(score))
+    print("Max number of computers:\t{}".format(num_of_computers))
     print("Total computers with paths:\t{}".format(total_comps))
     print("Max compromised :\t{}".format(max_total))
     print("Avg wave length:\t{}".format(round(avg_wavelen, 1)))
@@ -195,7 +209,6 @@ def simulate(user,password,url,maxwaves,edges,simulate,workers,start_hosts):
 
 def create_query(computer,user, password, url, maxwaves, edges, simulate):
     if LOGICAL in simulate:
-        # return 'MATCH (src)-[:HasSession]->(u:User) WHERE src.name IN $last_wave WITH src,u MATCH shortestPath((u)-[:MemberOf|AdminTo*1..]->(dest:Computer)) WHERE NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
         return 'MATCH shortestPath((src:Computer)-[:HasSession|MemberOf|AdminTo* 1..]->(dest:Computer)) WHERE src <> dest AND src.name IN $last_wave AND NOT dest IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'
     elif NETONLY in simulate:
         return 'MATCH (src:Computer)-[:Open]->(dest:Computer) WHERE src.name IN $last_wave AND NOT dest.name IN $last_wave RETURN COLLECT(DISTINCT(dest.name)) AS next_wave'

@@ -7,7 +7,7 @@ import logging
 DEFAULT_NUM_THREADS = 200
 
 class ShotHound(object):
-    def __init__(self,db_user,db_pass,db_url,domain,domain_user,domain_password,wthreads,use_encryption=False):
+    def __init__(self,db_user,db_pass,db_url,domain,domain_user,domain_password,wthreads,dbupdate,use_encryption=False):
         self.url = db_url
         self.db_user = db_user
         self.db_password = db_pass
@@ -21,6 +21,7 @@ class ShotHound(object):
         self.logical_paths = []
         self.practical_paths = []
         self.wthreads = wthreads
+        self.dbupdate = dbupdate
 
     def connect(self):
         self.connected = False
@@ -107,7 +108,6 @@ class ShotHound(object):
                     if valid_hops >= total_computers - 1:
                         practical_paths.append(path)
                 else:
-                    logger.info(f'Practical Path: {self.path_to_str(path)}')
                     practical_paths.append(path)
 
         return practical_paths
@@ -121,6 +121,43 @@ class ShotHound(object):
                         open_pairs.append((src_host, dest_host))
         return open_pairs
 
+    def get_network_access_pairs(self,cornershot_data):
+        sources = []
+        destinations = []
+        for source_host in cornershot_data.keys():
+            destinations_for_host = []
+            for destination_host in cornershot_data[source_host].keys():
+                if 'open' in cornershot_data[source_host][destination_host].values():
+                    destinations_for_host.append(destination_host)
+
+            if destinations_for_host:
+                sources.append(source_host)
+                destinations.append(destinations_for_host)
+        return sources, destinations
+
+    def load_data_to_neo4j(self,net_data):
+        src_names, dst_names = net_data
+        with self.driver.session() as session:
+            session.run('WITH $srcnames AS srcnames,$destnamelist AS destnamelist '
+                        'UNWIND srcnames AS srcname '
+                        'WITH srcnames,srcname,destnamelist,reduce(ix = -1, i IN RANGE(0,SIZE(srcnames)-1) '
+                        '| CASE srcnames[i] WHEN srcname THEN i ELSE ix END) AS six  '
+                        'MATCH (src {name:srcname}) '
+                        'MATCH (dst:Computer) WHERE dst.name IN destnamelist[six] '
+                        'MERGE (src)-[:Open]->(dst)',
+                        srcnames=src_names, destnamelist=dst_names)
+
+    def updatedb(self,cs_data):
+        if self.dbupdate:
+            logger.info('Updating discovered paths in the database...')
+            conn_data = self.get_network_access_pairs(cs_data)
+            self.load_data_to_neo4j(conn_data)
+            logger.info('database updated.')
+
+    def print_practical_paths(self):
+        for path in self.practical_paths:
+            logger.info(f'Practical Path: {self.path_to_str(path)}')
+
     def validate_paths(self):
         shots = self.generate_shots()
         if shots:
@@ -130,15 +167,23 @@ class ShotHound(object):
                 cs.add_shots([shot[0]],[shot[1]])
             cs.open_fire()
             logger.info('Parsing CornerShot results...')
+            self.updatedb(cs.read_results())
             open_pairs = self.cs_dict_to_open_pairs(cs.read_results())
             self.practical_paths = self.remove_impractical_paths(open_pairs)
+            self.print_practical_paths()
         else:
             logger.warning('No paths that involve more that 1 computer were found, no need to invoke CornerShot...')
             self.practical_paths = self.logical_paths
         return len(self.practical_paths)
 
     def _get_node_name_or_id(self,obj,field_name):
-        name = obj[field_name] if field_name in obj else obj.id
+        if field_name in obj:
+            name = obj[field_name]
+        elif 'objectid' in obj:
+            name = obj['objectid']
+        else:
+            name = str(obj.id)
+
         if obj.labels and "Computer" in obj.labels:
             name = "Computer:" + name
         return name
@@ -189,6 +234,7 @@ def parse_args():
     parser.add_argument("-t", dest="target", default=None, help="target entity to end query at", type=str)
     parser.add_argument('-v', dest='verbose', action='store_true', help='enable verbose logging')
     parser.add_argument("-w", "--workerthreads", dest='threads', help="number of threads to perform shots", default=DEFAULT_NUM_THREADS, type=int)
+    parser.add_argument("-ud", "--updatedb",dest="update_db", action='store_true', help='update neo4j database with scan findings')
 
     args = parser.parse_args()
 
@@ -213,7 +259,7 @@ if __name__ == '__main__':
         set_logger(args.verbose)
         logger.info('ShotHound starting...')
 
-        sh = ShotHound(db_user=args.dbuser, db_pass=args.dbpass, db_url=args.dburl, domain=args.domain, domain_user=args.domain_user, domain_password=args.domain_password, wthreads=args.threads)
+        sh = ShotHound(db_user=args.dbuser, db_pass=args.dbpass, db_url=args.dburl, domain=args.domain, domain_user=args.domain_user, domain_password=args.domain_password, wthreads=args.threads,dbupdate=args.update_db)
         if sh.connect():
             if sh.find_logical_paths(srcname=args.source,trgtname=args.target):
                 validated = sh.validate_paths()

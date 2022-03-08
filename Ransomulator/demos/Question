@@ -1,0 +1,8 @@
+Hey Sagie,
+
+How did you create the CSV file?  I can see it should as per:
+print("Writing results to file {}".format(file_path))
+
+But I dont appear to have anything within my current dir?
+
+Any help/advice would be appreciated,  thanks!

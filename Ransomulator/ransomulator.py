@@ -140,6 +140,7 @@ class ransomulator(object):
                     except Exception as exc:
                         print('Exception while processing %s: %s' % (computer, exc))
 
+
                 if total_comps > 0:
                     avg_wavelen = avg_wavelen / total_comps
                     score = round((score / (computers_in_environment**2))*100)

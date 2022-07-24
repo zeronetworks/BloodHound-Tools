@@ -416,6 +416,7 @@ class MainMenu(cmd.Cmd):
                 'name': comp_name,
                 'operatingsystem': os,
                 'enabled': enabled,
+                'is_vulnerable': True if random.random() > 0.95 else False
             }})
             ridcount += 1
 

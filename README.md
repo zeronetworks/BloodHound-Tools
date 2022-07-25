@@ -17,7 +17,7 @@ Validate practical paths discovered by BloodHound with [CornerShot](https://gith
 Simulate ransomware-like infection in your dataset.
 
 ## DBCreator
-Simulate BloodHound dataset, along with "Open" network access edges.
+Simulate BloodHound dataset, along with "Open" network access edges and unpatched vulnerabilities information.
 
 ## CustomQueries
 A list of common queries that reflect the network dimension, if it is integrated into the dataset.

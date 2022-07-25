@@ -22,3 +22,5 @@ Simulate BloodHound dataset, along with "Open" network access edges.
 ## CustomQueries
 A list of common queries that reflect the network dimension, if it is integrated into the dataset.
 
+## VulnerabilitiesDataImport
+Parse Vulnerability Scanners reports and enrich host nodes with information about unpatched vulnerabilities

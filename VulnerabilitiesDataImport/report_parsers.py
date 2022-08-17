@@ -95,6 +95,7 @@ class ReportParser(ABC):
             return
         pd.options.mode.chained_assignment = 'warn'
 
+        report_vulnerabilities['Hostname'] = report_vulnerabilities['Hostname'].str.upper()
         self._add_ip_host_mapping(report_vulnerabilities)
         vulnerabilities_df = pd.concat([vulnerabilities, report_vulnerabilities])
         vulnerabilities_df.Hostname = vulnerabilities_df.Hostname.map(self._ip_to_hostname)

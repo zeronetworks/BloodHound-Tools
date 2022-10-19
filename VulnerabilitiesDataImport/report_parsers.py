@@ -1,3 +1,4 @@
+import traceback
 from abc import ABC, abstractmethod
 import ipaddress
 from enum import Enum
@@ -91,8 +92,14 @@ class ReportParser(ABC):
         try:
             report_vulnerabilities = self.get_vulnerabilities()
         except Exception as e:
+            stack_trace = traceback.format_exc()
+            logger.error(stack_trace)
             logger.info(f'Failed parsing {self._scanner_name} report: {e}')
             return
+
+        if report_vulnerabilities is None or report_vulnerabilities.empty:
+            return
+
         pd.options.mode.chained_assignment = 'warn'
 
         report_vulnerabilities['Hostname'] = report_vulnerabilities['Hostname'].str.upper()
@@ -155,18 +162,26 @@ class NessusParser(ReportParser):
     def _get_nessus_ip_to_hostname_dataframe(report):
         host_to_ip = []
         for row in report.iterrows():
-            if row[1].Name == 'Host Fully Qualified Domain Name (FQDN) Resolution':
-                hostname = row[1]['Plugin Output'].split(' resolves as ')[1].rstrip('.\n').upper()
-                host_to_ip.append([row[1].Host, hostname])
-            elif row[1].Name == 'Windows NetBIOS / SMB Remote Host Information Disclosure':
-                hostname = row[1]['Plugin Output'].split('\n\n ')[1].split(' ')[0]
-                host_to_ip.append([row[1].Host, hostname])
-            elif row[1].Name == 'Microsoft Windows SMB LanMan Pipe Server Listing Disclosure':
-                hostname = row[1]['Plugin Output'].split('\n\n')[1].split(' ')[0]
-                host_to_ip.append([row[1].Host, hostname])
-            elif row[1].Name == 'Microsoft Windows SMB NativeLanManager Remote System Information Disclosure':
-                hostname = row[1]['Plugin Output'].split('The remote SMB Domain Name is : ')[1].rstrip('\n')
-                host_to_ip.append([row[1].Host, hostname])
+            try:
+                if row[1].Name == 'Host Fully Qualified Domain Name (FQDN) Resolution':
+                    hostname = row[1]['Plugin Output'].split(' resolves as ')[1].rstrip('.\n').upper()
+                    host_to_ip.append([row[1].Host, hostname])
+                elif row[1].Name == 'Windows NetBIOS / SMB Remote Host Information Disclosure':
+                    hostname = row[1]['Plugin Output'].split('\n\n ')[1].split(' ')[0]
+                    host_to_ip.append([row[1].Host, hostname])
+                elif row[1].Name == 'Microsoft Windows SMB LanMan Pipe Server Listing Disclosure':
+                    hostname = row[1]['Plugin Output'].split('\n\n')[1].split(' ')[0]
+                    host_to_ip.append([row[1].Host, hostname])
+                elif row[1].Name == 'Microsoft Windows SMB NativeLanManager Remote System Information Disclosure':
+                    if 'Nessus was able to obtain the following information about the host' in row[1]['Plugin Output']:
+                        hostname = row[1]['Plugin Output'].split('NetBIOS Domain Name: ')[1].split('\n')[0]
+                    else:
+                        hostname = row[1]['Plugin Output'].split('The remote SMB Domain Name is : ')[1].rstrip('\n')
+                    host_to_ip.append([row[1].Host, hostname])
+            except IndexError:
+                plugin_name = row[1].Name
+                plugin_output = row[1]['Plugin Output']
+                logger.warning(f'Failed to parse hostname. Plugin name: {plugin_name}, Plugin output: {plugin_output}')
 
         host_ip_df = pd.DataFrame(host_to_ip, columns=['Host', 'Hostname'])
         return host_ip_df.groupby('Host', as_index=False).agg({'Hostname': 'max'})
